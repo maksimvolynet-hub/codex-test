@@ -1,7 +1,7 @@
 import React,{useEffect,useState} from 'react'
 import {createRoot} from 'react-dom/client'
 import {supabase} from './supabase'
-import {Manager} from './manager-core-v4'
+import {Manager} from './manager-v5'
 import {Worker} from './worker-v4'
 import './v2.css'
 function Login(){const [u,setU]=useState(''),[p,setP]=useState(''),[msg,setMsg]=useState('');async function go(e){e.preventDefault();let email=u.trim();if(!email.includes('@'))email=email.toLowerCase()+'@ferrum.local';const {error}=await supabase.auth.signInWithPassword({email,password:p});if(error)setMsg('Не удалось войти. Проверьте логин и пароль.')}return <div className="auth"><form className="auth-card" onSubmit={go}><div className="logo">ФЕРРУМ</div><div className="muted">Производство</div><label>Логин или e-mail<input value={u} onChange={e=>setU(e.target.value)} required/></label><label>Пароль<input type="password" value={p} onChange={e=>setP(e.target.value)} required/></label>{msg&&<div className="error">{msg}</div>}<button>Войти</button></form></div>}
