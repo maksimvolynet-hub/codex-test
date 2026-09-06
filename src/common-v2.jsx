@@ -11,7 +11,7 @@ export const hours=m=>`${Math.round(Number(m||0)/6)/10} ч`
 export const dt=v=>v?new Date(v).toLocaleString('ru-RU',{timeZone:TZ}):'—'
 export const hm=v=>String(v||'').slice(0,5)
 export function useLive(table,fn,filter){useEffect(()=>{const ch=supabase.channel(`${table}-${Math.random()}`).on('postgres_changes',{event:'*',schema:'public',table,...(filter?{filter}:{})},fn).subscribe();return()=>supabase.removeChannel(ch)},[table,filter])}
-export function Header({profile,title}){return <header><div><div className="logo small">ФЕРРУМ</div><div className="muted">{title}</div></div><div className="row"><span className="desktop">{profile.full_name}</span><button className="ghost" onClick={()=>supabase.auth.signOut()}>Выйти</button></div></header>}
+export function Header({profile,title}){return <header><div><div className="logo small">ФЕРРУМ</div><div className="muted">{title}</div></div><div className="row"><b>{profile.full_name}</b><button className="ghost" onClick={()=>supabase.auth.signOut()}>Выйти</button></div></header>}
 export function Nav({items,value,onChange}){return <nav className="tabs">{items.map(([k,n])=><button key={k} className={value===k?'active':''} onClick={()=>onChange(k)}>{n}</button>)}</nav>}
 export function Badge({children,tone='gray'}){return <span className={`badge ${tone}`}>{children}</span>}
 export function Field({label,children,wide=false}){return <label className={wide?'wide':''}>{label}{children}</label>}
