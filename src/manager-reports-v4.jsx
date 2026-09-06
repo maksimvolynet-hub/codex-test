@@ -1,24 +1,46 @@
 import React,{useEffect,useMemo,useState} from 'react'
 import {supabase} from './supabase'
-import {Empty,day,hours,dt} from './common-v2'
-export {Reports,Planning,Labor,Payroll} from './manager-reports-v2'
+import {Nav,Badge,Field,Empty,day,monthStart,money,hours,dt} from './common-v2'
+import {Planning,Labor} from './manager-reports-v2'
+export {Planning,Labor}
 
-export const DOWNTIME_RU={
-  no_task:'Нет задания',no_material:'Нет материала',no_components:'Нет комплектующих',no_drawing:'Нет чертежа',no_tool:'Нет инструмента',broken_tool:'Сломан инструмент',waiting_previous:'Ожидание предыдущей операции',waiting_previous_operation:'Ожидание предыдущей операции',manager_decision:'Решение НЦ',equipment_failure:'Поломка оборудования',other:'Другое',waiting_task:'Нет задания'
+export const DOWNTIME_RU={no_task:'Нет задания',no_material:'Нет материала',no_components:'Нет комплектующих',no_drawing:'Нет чертежа',no_tool:'Нет инструмента',broken_tool:'Сломан инструмент',waiting_previous:'Ожидание предыдущей операции',waiting_previous_operation:'Ожидание предыдущей операции',manager_decision:'Решение НЦ',equipment_failure:'Поломка оборудования',other:'Другое',waiting_task:'Нет задания'}
+
+export function Reports(){
+  const [tab,setTab]=useState('submitted'),[rows,setRows]=useState([]),[selected,setSelected]=useState(null),[photos,setPhotos]=useState([])
+  const [r,setR]=useState({s:'',p:'',pen:'0',sr:'',pr:'',c:''})
+  async function load(){const {data}=await supabase.from('daily_reports').select('*,profiles!daily_reports_worker_id_fkey(full_name),daily_report_items(*),report_reviews(*)').in('status',['submitted','reviewed']).order('report_date',{ascending:false});setRows(data||[])}
+  useEffect(()=>{load()},[])
+  async function open(x){setSelected(x);const q=x.report_reviews?.[0];setR(x.status==='reviewed'?{s:String(q?.safety_percent??''),p:String(q?.productivity_percent??''),pen:String(q?.penalty_amount??0),sr:q?.safety_reason||'',pr:q?.penalty_reason||'',c:q?.manager_comment||''}:{s:'',p:'',pen:'0',sr:'',pr:'',c:''});const ids=(x.daily_report_items||[]).map(i=>i.task_id).filter(Boolean);if(!ids.length)return setPhotos([]);const {data}=await supabase.from('task_photos').select('*').in('task_id',ids);const out=[];for(const p of data||[]){const {data:u}=await supabase.storage.from('task-photos').createSignedUrl(p.storage_path||p.object_path,3600);out.push({...p,url:u?.signedUrl})}setPhotos(out)}
+  async function save(){
+    if(r.s===''||r.p==='')return alert('Нельзя проверить отчёт: обязательно установите коэффициент ТБ и коэффициент выработки.')
+    const safety=Number(r.s),prod=Number(r.p),pen=Number(r.pen||0)
+    if(!Number.isFinite(safety)||safety<0||safety>22)return alert('ТБ должен быть от 0 до 22%.')
+    if(!Number.isFinite(prod)||prod<0||prod>18)return alert('Выработка должна быть от 0 до 18%.')
+    if(safety<22&&!r.sr.trim())return alert('Укажите причину снижения ТБ.')
+    if(pen>0&&!r.pr.trim())return alert('Укажите причину штрафа.')
+    for(const i of selected.daily_report_items||[]){if(i.item_type==='unplanned'){const el=document.querySelector(`[data-ap="${i.id}"]`);if(!el)return alert('По каждой внеплановой работе нужно принять решение.');await supabase.from('daily_report_items').update({approved:Boolean(el.checked)}).eq('id',i.id)}}
+    const {error}=await supabase.rpc('review_daily_report',{p_report_id:selected.id,p_safety:safety,p_productivity:prod,p_penalty:pen,p_safety_reason:r.sr||null,p_penalty_reason:r.pr||null,p_comment:r.c||null})
+    if(error)alert(error.message);else{setSelected(null);load()}
+  }
+  const list=rows.filter(x=>x.status===tab)
+  return <section><h2>Отчёты</h2><Nav items={[["submitted","Непроверенные"],["reviewed","Проверенные"]]} value={tab} onChange={setTab}/><div className="cards">{list.length?list.map(x=><div className="card" key={x.id}><div className="row between"><b>{x.profiles?.full_name}</b><Badge tone={tab==='reviewed'?'green':'orange'}>{tab==='reviewed'?'Проверен':'Непроверен'}</Badge></div><div>{x.report_date}</div><div className="muted">Записей: {x.daily_report_items?.length||0}</div><button onClick={()=>open(x)}>{tab==='reviewed'?'Открыть':'Проверить'}</button></div>):<Empty>Нет отчётов</Empty>}</div>{selected&&<div className="modal"><div className="modal-card wide"><div className="row between"><h3>{selected.profiles?.full_name} · {selected.report_date}</h3><button className="ghost" onClick={()=>setSelected(null)}>Закрыть</button></div>{(selected.daily_report_items||[]).map(i=><div className="report" key={i.id}><b>{i.title}</b><div>{i.minutes} мин {i.order_number&&`· заказ ${i.order_number} / ${i.position_number}`}</div>{i.worker_comment&&<div className="muted">{i.worker_comment}</div>}{i.item_type==='unplanned'&&<label className="check"><input type="checkbox" data-ap={i.id} defaultChecked={i.approved===true}/> Подтвердить внеплановую работу</label>}<div className="photos">{photos.filter(p=>p.task_id===i.task_id).map(p=><a key={p.id} href={p.url} target="_blank" rel="noreferrer"><img src={p.url}/><small>{p.kind==='after'?'После':'До'}</small></a>)}</div></div>)}{selected.worker_general_comment&&<div className="panel"><b>Комментарий рабочего:</b> {selected.worker_general_comment}</div>}{selected.status==='submitted'?<div className="form"><div className="warning wide">Оба коэффициента обязательны. Пока ТБ и выработка не заполнены, отчёт проверить нельзя.</div><Field label="ТБ, %"><input type="number" min="0" max="22" placeholder="Обязательно" value={r.s} onChange={e=>setR({...r,s:e.target.value})}/></Field><Field label="Выработка, %"><input type="number" min="0" max="18" placeholder="Обязательно" value={r.p} onChange={e=>setR({...r,p:e.target.value})}/></Field><Field label="Штраф, ₽"><input type="number" min="0" value={r.pen} onChange={e=>setR({...r,pen:e.target.value})}/></Field><Field label="Причина снижения ТБ"><input value={r.sr} onChange={e=>setR({...r,sr:e.target.value})}/></Field><Field label="Причина штрафа" wide><input value={r.pr} onChange={e=>setR({...r,pr:e.target.value})}/></Field><Field label="Комментарий НЦ" wide><textarea value={r.c} onChange={e=>setR({...r,c:e.target.value})}/></Field><button className="wide" disabled={r.s===''||r.p===''} onClick={save}>Проверить и сохранить</button></div>:<div className="panel">ТБ: <b>{r.s}%</b> · Выработка: <b>{r.p}%</b> · Штраф: <b>{money(r.pen)}</b></div>}</div></div>}</section>
 }
 
 export function Downtime(){
   const [rows,setRows]=useState([]),[onlyToday,setOnlyToday]=useState(true)
-  async function load(){
-    let q=supabase.from('downtime_events').select('*,profiles!downtime_events_worker_id_fkey(full_name)').order('started_at',{ascending:false}).limit(500)
-    if(onlyToday)q=q.gte('started_at',`${day()}T00:00:00+05:00`)
-    const {data,error}=await q
-    if(error)alert(error.message);else setRows(data||[])
-  }
+  async function load(){let q=supabase.from('downtime_events').select('*,profiles!downtime_events_worker_id_fkey(full_name)').order('started_at',{ascending:false}).limit(500);if(onlyToday)q=q.gte('started_at',`${day()}T00:00:00+05:00`);const {data,error}=await q;if(error)alert(error.message);else setRows(data||[])}
   useEffect(()=>{load()},[onlyToday])
   const summary=useMemo(()=>{const o={};for(const x of rows){const min=Math.max(0,Math.round(((x.ended_at?new Date(x.ended_at):new Date())-new Date(x.started_at))/60000));o[x.reason]=(o[x.reason]||0)+min}return Object.entries(o).sort((a,b)=>b[1]-a[1])},[rows])
-  return <section><div className="head"><div><h2>Простои</h2><div className="muted">Время простоя считается только внутри открытой смены.</div></div><label className="checkline"><input type="checkbox" checked={onlyToday} onChange={e=>setOnlyToday(e.target.checked)}/> Только сегодня</label></div>
-    {summary.length?<div className="cards">{summary.map(([k,v])=><div className="card" key={k}><b>{DOWNTIME_RU[k]||'Другое'}</b><div className="kpi">{hours(v)}</div></div>)}</div>:<Empty>Простоев нет</Empty>}
-    <div className="table"><table><thead><tr><th>Рабочий</th><th>Причина</th><th>Начало</th><th>Конец</th><th>Комментарий</th></tr></thead><tbody>{rows.map(x=><tr key={x.id}><td>{x.profiles?.full_name||'—'}</td><td>{DOWNTIME_RU[x.reason]||'Другое'}</td><td>{dt(x.started_at)}</td><td>{x.ended_at?dt(x.ended_at):'Сейчас'}</td><td>{x.comment||'—'}</td></tr>)}</tbody></table></div>
-  </section>
+  return <section><div className="head"><div><h2>Простои</h2><div className="muted">Время простоя считается только внутри открытой смены.</div></div><label className="checkline"><input type="checkbox" checked={onlyToday} onChange={e=>setOnlyToday(e.target.checked)}/> Только сегодня</label></div>{summary.length?<div className="cards">{summary.map(([k,v])=><div className="card" key={k}><b>{DOWNTIME_RU[k]||'Другое'}</b><div className="kpi">{hours(v)}</div></div>)}</div>:<Empty>Простоев нет</Empty>}<div className="table"><table><thead><tr><th>Рабочий</th><th>Причина</th><th>Начало</th><th>Конец</th><th>Комментарий</th></tr></thead><tbody>{rows.map(x=><tr key={x.id}><td>{x.profiles?.full_name||'—'}</td><td>{DOWNTIME_RU[x.reason]||'Другое'}</td><td>{dt(x.started_at)}</td><td>{x.ended_at?dt(x.ended_at):'Сейчас'}</td><td>{x.comment||'—'}</td></tr>)}</tbody></table></div></section>
+}
+
+export function Payroll(){
+  const [from,setFrom]=useState(monthStart()),[to,setTo]=useState(day()),[rows,setRows]=useState([]),[adv,setAdv]=useState([]),[err,setErr]=useState('')
+  async function load(){setErr('');const [{data,error},{data:a,error:ae}]=await Promise.all([supabase.rpc('get_manager_payroll_summary',{p_from:from,p_to:to}),supabase.from('payroll_advances').select('*').gte('paid_at',from).lte('paid_at',to)]);if(error)return setErr(error.message);if(ae&&ae.code!=='42P01')setErr(ae.message);setRows(data||[]);setAdv(a||[])}
+  useEffect(()=>{load()},[])
+  const amap=useMemo(()=>{const m={};for(const x of adv)m[x.worker_id]=(m[x.worker_id]||0)+Number(x.amount||0);return m},[adv])
+  const fot=rows.reduce((s,x)=>s+Number(x.calculated_pay||0),0),advTotal=adv.reduce((s,x)=>s+Number(x.amount||0),0)
+  async function addAdvance(worker){const raw=prompt(`Аванс для ${worker.full_name}, ₽:`);if(raw===null)return;const amount=Number(String(raw).replace(',','.'));if(!amount||amount<=0)return alert('Введите сумму больше 0');const comment=prompt('Комментарий к авансу:','')||'';const {data:{user}}=await supabase.auth.getUser();const {error}=await supabase.from('payroll_advances').insert({worker_id:worker.worker_id,paid_at:day(),amount,comment,created_by:user?.id});if(error)alert(error.message);else load()}
+  return <section><div className="head"><div><h2>Зарплата и ФОТ</h2><div className="muted">ФОТ за выбранный период и выплаченные авансы</div></div><div className="row"><input type="date" value={from} onChange={e=>setFrom(e.target.value)}/><input type="date" value={to} onChange={e=>setTo(e.target.value)}/><button onClick={load}>Рассчитать</button></div></div>{err&&<div className="warning">{err}</div>}<div className="cards"><div className="card"><span className="muted">Общий ФОТ</span><div className="kpi">{money(fot)}</div></div><div className="card"><span className="muted">Выдано авансами</span><div className="kpi">{money(advTotal)}</div></div><div className="card"><span className="muted">Остаток к выплате</span><div className="kpi">{money(fot-advTotal)}</div></div></div><div className="table"><table><thead><tr><th>Рабочий</th><th>Часы</th><th>Смен</th><th>ТБ</th><th>Выработка</th><th>Штрафы</th><th>Начислено</th><th>Авансы</th><th>Остаток</th><th></th></tr></thead><tbody>{rows.map(x=>{const a=amap[x.worker_id]||0;return <tr key={x.worker_id}><td><b>{x.full_name}</b></td><td>{hours(x.worked_minutes)}</td><td>{x.reviewed_shifts}</td><td>{Number(x.avg_safety_percent||0).toFixed(1)}%</td><td>{Number(x.avg_productivity_percent||0).toFixed(1)}%</td><td>{money(x.penalties)}</td><td><b>{money(x.calculated_pay)}</b></td><td>{money(a)}</td><td><b>{money(Number(x.calculated_pay||0)-a)}</b></td><td><button className="secondary" onClick={()=>addAdvance(x)}>+ Аванс</button></td></tr>})}</tbody></table></div></section>
 }
