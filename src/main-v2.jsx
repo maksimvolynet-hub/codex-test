@@ -1,8 +1,8 @@
 import React,{useEffect,useState} from 'react'
 import {createRoot} from 'react-dom/client'
 import {supabase} from './supabase'
-import {Manager} from './manager-core-v3'
-import {Worker} from './worker-v3'
+import {Manager} from './manager-core-v4'
+import {Worker} from './worker-v4'
 import './v2.css'
 function Login(){const [u,setU]=useState(''),[p,setP]=useState(''),[msg,setMsg]=useState('');async function go(e){e.preventDefault();let email=u.trim();if(!email.includes('@'))email=email.toLowerCase()+'@ferrum.local';const {error}=await supabase.auth.signInWithPassword({email,password:p});if(error)setMsg('Не удалось войти. Проверьте логин и пароль.')}return <div className="auth"><form className="auth-card" onSubmit={go}><div className="logo">ФЕРРУМ</div><div className="muted">Производство</div><label>Логин или e-mail<input value={u} onChange={e=>setU(e.target.value)} required/></label><label>Пароль<input type="password" value={p} onChange={e=>setP(e.target.value)} required/></label>{msg&&<div className="error">{msg}</div>}<button>Войти</button></form></div>}
 function App(){const [s,setS]=useState(null),[profile,setProfile]=useState(null),[load,setLoad]=useState(true);useEffect(()=>{supabase.auth.getSession().then(({data})=>setS(data.session)).finally(()=>setLoad(false));const {data:{subscription}}=supabase.auth.onAuthStateChange((_e,x)=>setS(x));return()=>subscription.unsubscribe()},[]);useEffect(()=>{if(!s?.user){setProfile(null);return}supabase.from('profiles').select('*').eq('id',s.user.id).single().then(({data})=>setProfile(data))},[s]);if(load)return <div className="auth">Загрузка…</div>;if(!s)return <Login/>;if(!profile)return <div className="auth">Загружаем профиль…</div>;return profile.role==='manager'?<Manager profile={profile}/>:<Worker profile={profile}/>}createRoot(document.getElementById('root')).render(<App/>)
