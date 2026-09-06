@@ -8,6 +8,7 @@ export function Manager({profile}){
   const [loadError,setLoadError]=useState('')
   const [busy,setBusy]=useState(false)
   const [hr,setHr]=useState(false)
+  const [workersTab,setWorkersTab]=useState(false)
 
   async function loadRequests(){
     const {data,error}=await supabase.from('shift_reopen_requests').select('id,worker_id,reason,created_at,status').eq('status','pending').order('created_at',{ascending:true})
@@ -30,10 +31,22 @@ export function Manager({profile}){
     return()=>{clearInterval(timer);supabase.removeChannel(channel)}
   },[profile.id])
 
+  useEffect(()=>{
+    const check=()=>{
+      const active=document.querySelector('main > nav.tabs > button.active')
+      const isWorkers=active?.textContent?.trim()==='Рабочие'
+      setWorkersTab(Boolean(isWorkers))
+      if(!isWorkers)setHr(false)
+    }
+    check()
+    const timer=setInterval(check,250)
+    return()=>clearInterval(timer)
+  },[])
+
   const first=requests[0]
   return <>
-    <button onClick={()=>setHr(true)} style={{position:'fixed',right:'18px',bottom:'18px',zIndex:8000,borderRadius:'999px',padding:'12px 18px',boxShadow:'0 8px 24px rgba(0,0,0,.2)'}}>Кадры / настройки рабочих</button>
-    {hr&&<HRPanel profile={profile} onClose={()=>setHr(false)}/>} 
+    {workersTab&&<button onClick={()=>setHr(true)} style={{position:'fixed',right:'18px',bottom:'18px',zIndex:8000,borderRadius:'999px',padding:'12px 18px',boxShadow:'0 8px 24px rgba(0,0,0,.2)'}}>Кадры / настройки рабочих</button>}
+    {hr&&workersTab&&<HRPanel profile={profile} onClose={()=>setHr(false)}/>} 
     {loadError&&<div style={{position:'fixed',right:'16px',top:'16px',zIndex:10000,width:'min(480px,calc(100vw - 32px))',background:'#fef2f2',border:'2px solid #dc2626',borderRadius:'14px',padding:'14px 16px',boxShadow:'0 10px 30px rgba(0,0,0,.18)'}}><div style={{fontWeight:800,marginBottom:'4px'}}>Ошибка уведомлений НЦ</div><div style={{fontSize:'13px'}}>{loadError}</div><button style={{marginTop:'10px'}} onClick={loadRequests}>Повторить</button></div>}
     {!loadError&&requests.length>0&&<div style={{position:'fixed',right:'16px',top:'16px',zIndex:9999,width:'min(460px,calc(100vw - 32px))',background:'#fff7ed',border:'3px solid #f97316',borderRadius:'14px',padding:'16px',boxShadow:'0 10px 30px rgba(0,0,0,.22)'}}><div style={{fontWeight:900,fontSize:'18px',marginBottom:'8px'}}>🔔 Запрос на повторную смену</div><div style={{fontSize:'16px'}}><b>{first?.worker_name||'Рабочий'}</b>{requests.length>1?` · ещё запросов: ${requests.length-1}`:''}</div><div style={{marginTop:'6px'}}>{first?.reason||'Причина не указана'}</div><div style={{display:'flex',gap:'8px',marginTop:'12px',flexWrap:'wrap'}}><button disabled={busy} onClick={()=>resolve(first.id,true)}>Разрешить повторную смену</button><button disabled={busy} className="secondary" onClick={()=>resolve(first.id,false)}>Отклонить</button></div></div>}
     <ManagerV4 profile={profile}/>
